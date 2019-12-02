@@ -1,7 +1,6 @@
 package com.example.aaron.talkerm
 
 import android.Manifest
-import android.annotation.TargetApi
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -12,9 +11,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.support.v4.app.ActivityCompat
 import android.support.v7.app.AppCompatActivity
 import android.text.method.ScrollingMovementMethod
@@ -25,29 +28,34 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
-import java.io.UnsupportedEncodingException
-import java.util.UUID
 import android.os.Handler
+import android.provider.MediaStore
+import android.support.annotation.RequiresApi
+import android.support.v4.content.ContextCompat
+import android.support.v4.content.FileProvider
 import kotlinx.android.synthetic.main.activity_main.*
+import java.io.*
+import java.text.SimpleDateFormat
+import java.util.*
 
 
 class MainActivity : AppCompatActivity() {
     private lateinit var mediaPlayer: MediaPlayer
-    private lateinit var runnable:Runnable
+    private var pause: Int = 0
     private var handler: Handler = Handler()
-    private var pause:Int = 0
-    private var current_song:Int = 0
-    private var song: IntArray = intArrayOf(R.raw.s1, R.raw.s2, R.raw.s3, R.raw.s4, R.raw.s5)
-
+    private var current_song: Int = 0
+    private var song: IntArray = intArrayOf(R.raw.linking_park, R.raw.s2, R.raw.s3, R.raw.s4, R.raw.s5)
+    lateinit var captureButton: Button
     private var myUUID: UUID? = null
+    val REQUEST_IMAGE_CAPTURE = 1
+    private var mCurrentPhotoPath: String? = null;
+    private val PERMISSION_REQUEST_CODE: Int = 101
+
 
     private var mBluetoothAdapter: BluetoothAdapter? = null //holds the Bluetooth Adapter
     private var mTextarea: TextView? = null                 //for writing messages to screen
     private var server: AcceptThread? = null                //server object
-    private var client:ConnectThread? = null
+    private var client: ConnectThread? = null
     private lateinit var socketSending: BluetoothSocket
     private var connectionEstablished: Boolean = false
 
@@ -66,7 +74,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         myUUID = UUID.fromString(MY_UUID_STRING)        //unique UUID (or GUID) for this App
 
-
         mediaPlayer = MediaPlayer.create(this, song[0])
 
         mTextarea = findViewById(R.id.textView)
@@ -75,40 +82,64 @@ class MainActivity : AppCompatActivity() {
             mTextarea!!.append("My UUID:  $myUUID \n")
         }
         setUpButtons()
+
+        bluetooth!!.setOnClickListener {
+
+            try {
+                Log.d(TAG, "bluetooth")
+                hideBL()
+
+
+            } catch (ioe: IOException) {
+                Log.e(TCLIENT, "IOException when vibrateButton Listener")
+            }
+        }
+        captureButton = findViewById(R.id.btn_capture)
+        captureButton.setOnClickListener(View.OnClickListener {
+            Toast.makeText(this, "media pause", Toast.LENGTH_SHORT).show()
+
+            if (checkPersmission()) takePicture() else requestPermission()
+        })
     }
 
     private fun initializeInput() {
         setupFlashPermissions()
         setupVibratePermissions()
+        requestPermission()
+    }
+
+    private fun requestPermission() {
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA), PERMISSION_REQUEST_CODE)
     }
 
     private fun setupFlashPermissions() {
         ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION)
     }
+
     private fun setupVibratePermissions() {
         ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.VIBRATE), VIBRATE_PERMISSION)
     }
 
     private fun playAndPause() {
 
-        when(pause){
+        when (pause) {
             0 -> { // start the playlist from beginning
                 mediaPlayer.seekTo(mediaPlayer.currentPosition)
                 mediaPlayer = MediaPlayer.create(this, song[0])
                 mediaPlayer.start()
                 pause = 2
-                Toast.makeText(this,"media playing", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "media playing", Toast.LENGTH_SHORT).show()
             }
             1 -> { // // start the playlist from pause
                 mediaPlayer.start()
                 pause = 2
-                Toast.makeText(this,"media playing", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "media playing", Toast.LENGTH_SHORT).show()
 
             }
-            else->{ // pause current song
+            else -> { // pause current song
                 mediaPlayer.pause()
                 pause = 1
-                Toast.makeText(this,"media pause", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "media pause", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -124,11 +155,11 @@ class MainActivity : AppCompatActivity() {
 
         current_song += 1
 
-        if (current_song >= song.size){
+        if (current_song >= song.size) {
             current_song = 0
         }
 
-        Toast.makeText(this,"size" + song.size, Toast.LENGTH_SHORT).show()
+//        Toast.makeText(this,"size" + song.size, Toast.LENGTH_SHORT).show()
 
         mediaPlayer.release()
         mediaPlayer = MediaPlayer.create(this, song[current_song])
@@ -137,7 +168,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun goBack() {
         current_song -= 1
-        if (current_song <= 0){
+        if (current_song <= 0) {
             current_song = 0
         }
         mediaPlayer.release()
@@ -152,12 +183,18 @@ class MainActivity : AppCompatActivity() {
     private fun showButtons(socket: BluetoothSocket) {
         Log.d(TAG, "buttons visibility")
         setBtnListeners(socket)
-        val flashButton = findViewById<Button>(R.id.stopButton)
-        flashButton!!.visibility = View.VISIBLE
-        val beepButton = findViewById<Button>(R.id.beepButton)
-        beepButton!!.visibility = View.VISIBLE
-        val vibrateButton = findViewById<Button>(R.id.vibrateButton)
-        vibrateButton!!.visibility = View.VISIBLE
+
+        hideBL()
+
+    }
+
+    private fun hideBL() {
+        showHide(textView)
+        showHide(connect_button)
+        showHide(scan_button)
+        showHide(imageView2)
+        showHide(seekBar)
+        showHide(editText)
     }
 
     private fun setBtnListeners(socketSending: BluetoothSocket) {
@@ -221,18 +258,31 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TCLIENT, "IOException when vibrateButton Listener")
             }
         }
+
+
     }
+
+    private fun showHide(view: View) {
+        view.visibility = if (view.visibility == View.VISIBLE) {
+            View.INVISIBLE
+        } else {
+            View.VISIBLE
+        }
+    }
+
     /**
      * Set up the listeners for the two buttons
      */
     private fun setUpButtons() {
         val scanButton = findViewById<Button>(R.id.scan_button)
-        scanButton.setOnClickListener {       //Scanning is the action performed by the client
+        scanButton.setOnClickListener {
+            //Scanning is the action performed by the client
             getPairedDevices()
             setUpBroadcastReceiver()
         }
         val connectButton = findViewById<Button>(R.id.connect_button)
-        connectButton?.setOnClickListener {    //This button activates the App as the server
+        connectButton?.setOnClickListener {
+            //This button activates the App as the server
             Log.i(TSERVER, "Connect Button setting up server")
             mTextarea!!.append("Connect Button: setting up server\n")
             //make server discoverable for N_SECONDS
@@ -275,16 +325,6 @@ class MainActivity : AppCompatActivity() {
         Log.i(LOG_TAG, "End of onResume()")
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
-        Log.i(LOG_TAG, "onActivityResult(): requestCode = $requestCode")
-        if (requestCode == REQUEST_ENABLE_BT) {
-            if (resultCode == Activity.RESULT_OK) {
-                Log.i(LOG_TAG, "  --    Bluetooth is enabled")
-                getPairedDevices() //find already known paired devices
-                setUpBroadcastReceiver()
-            }
-        }
-    }
 
     private fun getPairedDevices() {//find already known paired devices
         val pairedDevices = mBluetoothAdapter!!.bondedDevices
@@ -305,15 +345,15 @@ class MainActivity : AppCompatActivity() {
     private fun setUpBroadcastReceiver() {
         // Create a BroadcastReceiver for ACTION_FOUND
         if (ActivityCompat.checkSelfPermission(this,
-            android.Manifest.permission.ACCESS_FINE_LOCATION) !=
-                                  PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(this,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION)
-                                            != PackageManager.PERMISSION_GRANTED)    {
+                        android.Manifest.permission.ACCESS_FINE_LOCATION) !=
+                PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
                     arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
                     ACCESS_FINE_LOCATION)
-            Log.i(TCLIENT,"Getting Permission")
+            Log.i(TCLIENT, "Getting Permission")
             return
             //Discovery will be setup in onRequestPermissionResult() if permission is granted
         }
@@ -336,14 +376,52 @@ class MainActivity : AppCompatActivity() {
                 }
                 return
             }
+            PERMISSION_REQUEST_CODE -> {
+
+                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+
+                    takePicture()
+
+                } else {
+                    takePicture()
+
+                    Toast.makeText(this, "Permission Denied", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+
         }
     }
+
+//    override fun onRequestPermissionsResult2(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+//        when (requestCode) {
+//            PERMISSION_REQUEST_CODE -> {
+//
+//                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+//                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+//
+//                    takePicture()
+//
+//                } else {
+////                    takePicture()
+//
+//                    Toast.makeText(this, "Permission Denied", Toast.LENGTH_SHORT).show()
+//                }
+//                return
+//            }
+//
+//            else -> {
+//
+//            }
+//        }
+//    }
 
     /**
      * Activate Bluetooth discovery for the client
      */
     private fun setupDiscovery() {
-        Log.i(TCLIENT,"Activating Discovery")
+        Log.i(TCLIENT, "Activating Discovery")
         val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
         registerReceiver(mReceiver, filter)
         mBluetoothAdapter!!.startDiscovery()
@@ -359,25 +437,25 @@ class MainActivity : AppCompatActivity() {
         if (BluetoothDevice.ACTION_FOUND == action) {
             // Get the BluetoothDevice object from the Intent
             val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-            val deviceName  =
-                if (device.name != null) {
-                    device.name.toString()
-                } else {
-                    "--no name--"
-                }
+            val deviceName =
+                    if (device.name != null) {
+                        device.name.toString()
+                    } else {
+                        "--no name--"
+                    }
             Log.i(TCLIENT, deviceName + "\n" + device)
             mTextarea!!.append("$deviceName, $device \n")
 
             // The following is specific to this App for the client
             if (deviceName.length > 3) { //for now, looking for MSU prefix
-                val prefix = deviceName.subSequence(0,3)
+                val prefix = deviceName.subSequence(0, 3)
                 mTextarea!!.append("Prefix = $prefix\n    ")
                 if (prefix == "MSU") {//This is the server
-                    Log.i(TCLIENT,"Canceling Discovery")
+                    Log.i(TCLIENT, "Canceling Discovery")
                     mBluetoothAdapter!!.cancelDiscovery()
-                    Log.i(TCLIENT,"Connecting")
+                    Log.i(TCLIENT, "Connecting")
                     client = ConnectThread(device)  //FIX** remember and reconnect if interrupted?
-                    Log.i(TCLIENT,"Running Connect Thread")
+                    Log.i(TCLIENT, "Running Connect Thread")
                     client?.start()
                 }
             }
@@ -395,21 +473,23 @@ class MainActivity : AppCompatActivity() {
      * This action is specific to this App.
      * @param msg The received info to display
      */
-    @TargetApi(Build.VERSION_CODES.M)
+
     fun echoMsg(msg: String) {
         mTextarea!!.append(msg)
 
-        when(msg){
-            "stop"    -> stopSong()
-            "play"    -> playAndPause()
+        when (msg) {
+            "stop" -> stopSong()
+            "play" -> playAndPause()
             "forward" -> goForward()
             "go back" -> goBack()
+            "ABC" -> hideBL()
         }
     }
 
     ////////////////// Client Thread to talk to Server here ///////////////////
 
-    private inner class ConnectThread(mmDevice: BluetoothDevice):Thread(){//from android developer
+    private inner class ConnectThread(mmDevice: BluetoothDevice) : Thread() {
+        //from android developer
         private var mmSocket: BluetoothSocket? = null
 
         init {
@@ -429,7 +509,7 @@ class MainActivity : AppCompatActivity() {
             Log.i(TCLIENT, "in ClientThread - Canceling Discovery")
             mBluetoothAdapter!!.cancelDiscovery()
             if (mmSocket == null) {
-                Log.e(TCLIENT,"ConnectThread:run(): mmSocket is null")
+                Log.e(TCLIENT, "ConnectThread:run(): mmSocket is null")
             }
             try {
                 // Connect the device through the socket. This will block
@@ -438,13 +518,13 @@ class MainActivity : AppCompatActivity() {
                 mmSocket!!.connect()
             } catch (connectException: IOException) {
                 Log.i(TCLIENT,
-                    "Connect IOException when trying socket connection\n $connectException")
+                        "Connect IOException when trying socket connection\n $connectException")
                 // Unable to connect; close the socket and get out
                 try {
                     mmSocket!!.close()
                 } catch (closeException: IOException) {
                     Log.i(TCLIENT,
-                    "Close IOException when trying socket connection\n $closeException")
+                            "Close IOException when trying socket connection\n $closeException")
                 }
 
                 return
@@ -491,7 +571,75 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+//////////
 
+    @RequiresApi(Build.VERSION_CODES.FROYO)
+    private fun takePicture() {
+
+        val intent: Intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        val file: File = createFile()
+
+        val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "com.example.android.fileprovider",
+                file
+        )
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+        startActivityForResult(intent, REQUEST_IMAGE_CAPTURE)
+
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == Activity.RESULT_OK) {
+
+            //To get the File for further usage
+            val auxFile = File(mCurrentPhotoPath)
+
+
+            var bitmap: Bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath)
+            imageView2.setImageBitmap(bitmap)
+            getPairedDevices() //find already known paired devices
+            setUpBroadcastReceiver()
+
+        }
+    }
+
+//    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
+//        Log.i(LOG_TAG, "onActivityResult(): requestCode = $requestCode")
+//        if (requestCode == REQUEST_ENABLE_BT) {
+//            if (resultCode == Activity.RESULT_OK) {
+//                Log.i(LOG_TAG, "  --    Bluetooth is enabled")
+//                getPairedDevices() //find already known paired devices
+//                setUpBroadcastReceiver()
+//            }
+//        }
+//    }
+
+    private fun checkPersmission(): Boolean {
+        return (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(this,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
+    }
+
+//    private fun requestPermission() {
+//        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA), PERMISSION_REQUEST_CODE)
+//    }
+
+    @RequiresApi(Build.VERSION_CODES.FROYO)
+    @Throws(IOException::class)
+    private fun createFile(): File {
+        // Create an image file name
+        val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
+        val storageDir: File = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        return File.createTempFile(
+                "JPEG_${timeStamp}_", /* prefix */
+                ".jpg", /* suffix */
+                storageDir /* directory */
+        ).apply {
+            // Save a file: path for use with ACTION_VIEW intents
+            mCurrentPhotoPath = absolutePath
+        }
+    }
 
     ///////////////////////////////  ServerSocket stuff here ///////////////////////////
 
@@ -556,11 +704,14 @@ class MainActivity : AppCompatActivity() {
             try {
                 val msgString = msg.toString(Charsets.UTF_8)
                 Log.i(TSERVER, "\nServer Received  $nBytes, Bytes:  [$msgString]\n")
-                runOnUiThread { echoMsg("\nReceived $nBytes:  [$msgString]\n") }
-//                runOnUiThread { initializeInput() }
+                runOnUiThread {
+                    echoMsg("\nReceived $nBytes:  [$msgString]\n")
+                    hideBL()
+                }
+                runOnUiThread { initializeInput() }
             } catch (uee: UnsupportedEncodingException) {
                 Log.e(TSERVER,
-                    "UnsupportedEncodingException when converting bytes to String\n $uee")
+                        "UnsupportedEncodingException when converting bytes to String\n $uee")
             } finally {
                 cancel()        //for this App - close() after 1 (or no) message received
             }
@@ -602,10 +753,12 @@ class MainActivity : AppCompatActivity() {
         private const val TSERVER = "--Talker SERVER--"  //for Log.X
         private const val REQUEST_ENABLE_BT = 3313  //our own code used with Intents
         private const val MY_UUID_STRING = "12ce62cb-60a1-4edf-9e3a-ca889faccd6c"
-                                                             //from www.uuidgenerator.net
+        //from www.uuidgenerator.net
         private const val SERVICE_NAME = "Talker"
         private const val LOG_TAG = "--Talker----"
         private const val TAG = "--Buttons----"
     }
 }
+
+
 

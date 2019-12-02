@@ -1,4 +1,5 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent"
     android:layout_height="match_parent" android:paddingLeft="@dimen/activity_horizontal_margin"
     android:paddingRight="@dimen/activity_horizontal_margin"
@@ -6,33 +7,68 @@
     android:paddingBottom="@dimen/activity_vertical_margin" tools:context=".MainActivity">
 
 
+    <ImageView
+        android:id="@+id/imageView2"
+        android:layout_width="296dp"
+        android:layout_height="238dp"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="65dp"
+        android:background="@mipmap/ic_launcher"
+        android:visibility="visible" />
+
     <TextView
         android:id="@+id/textView"
         android:layout_width="374dp"
         android:layout_height="248dp"
         android:scrollbars="vertical"
-        android:text="@string/intro" />
+        android:text="@string/intro"
+        android:visibility="invisible" />
+
+    <SeekBar
+        android:id="@+id/seekBar"
+        android:layout_width="374dp"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginStart="0dp"
+        android:layout_marginTop="327dp" />
+
+    <TextView
+        android:id="@+id/editText"
+        android:layout_width="352dp"
+        android:layout_height="34dp"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:layout_marginStart="15dp"
+        android:layout_marginTop="261dp"
+        android:ems="10"
+        android:inputType="textPersonName"
+        android:text="Name" />
 
     <Button
+        android:id="@+id/scan_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/scan_button"
-        android:id="@+id/scan_button"
         android:layout_below="@+id/textView"
         android:layout_alignParentStart="true"
         android:layout_marginTop="59dp"
-        android:singleLine="true" />
+        android:singleLine="true"
+        android:text="@string/scan_button"
+        android:visibility="invisible" />
 
     <Button
+        android:id="@+id/connect_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/connect_button"
-        android:id="@+id/connect_button"
         android:layout_below="@+id/textView"
-        android:layout_toEndOf="@+id/scan_button"
-        android:layout_marginTop="59dp"
         android:layout_marginLeft="80dp"
-        android:singleLine="true" />
+        android:layout_marginTop="59dp"
+        android:layout_toEndOf="@+id/scan_button"
+        android:singleLine="true"
+        android:text="@string/connect_button"
+        android:visibility="invisible" />
 
     <Button
         android:id="@+id/stopButton"
@@ -42,6 +78,16 @@
         android:layout_marginStart="118dp"
         android:layout_marginBottom="100dp"
         android:text="stop"
+        android:visibility="visible" />
+
+    <Button
+        android:id="@+id/bluetooth"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/beepButton"
+        android:layout_marginStart="0dp"
+        android:layout_marginBottom="100dp"
+        android:text="BT"
         android:visibility="visible" />
 
     <Button
@@ -77,5 +123,21 @@
         android:layout_marginBottom="292dp"
         android:text="back"
         android:visibility="visible" />
+<!--    <ImageView-->
+<!--        android:id="@+id/imageview2"-->
+<!--        android:layout_gravity="center_horizontal"-->
+<!--        android:layout_width="200dp"-->
+<!--        android:layout_height="300dp" />-->
+
+    <Button
+        android:id="@+id/btn_capture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/vibrateButton"
+        android:layout_alignRight="@+id/stopButton"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="0dp"
+        android:layout_marginEnd="-120dp"
+        android:text="Capture" />
 
 </RelativeLayout>
